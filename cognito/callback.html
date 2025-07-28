@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <title>Connexion réussie</title>
+</head>
+<body>
+<h2>Connexion en cours...</h2>
+
+<script type="module">
+    import { userManager, signOutRedirect } from "./main.js";
+
+    userManager
+        .signinCallback()
+        .then((user) => {
+            localStorage.setItem("access_token", user.id_token);
+            localStorage.setItem("email", user.profile?.email);
+            window.location.href = "/index.html";
+        })
+        .catch((err) => {
+            console.error("❌ Erreur Cognito :", err);
+            document.body.innerHTML =
+                "<h2>Erreur de connexion</h2><pre>" + err.message + "</pre>";
+        });
+
+    document.getElementById("signOut").addEventListener("click", async () => {
+        await signOutRedirect();
+    });
+</script>
+</body>
+</html>

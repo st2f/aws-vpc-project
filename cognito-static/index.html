@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload Vidéo</title>
+</head>
+<body>
+<h1>Envoyer une vidéo</h1>
+
+<div id="auth-section">
+  <button id="loginBtn">Se connecter</button>
+</div>
+
+<div id="upload-section" style="display: none">
+  <p>Connecté en tant que : <span id="userEmail"></span></p>
+  <input type="file" id="fileInput" accept="video/*" />
+  <button id="uploadBtn">Téléverser</button>
+  <p id="status"></p>
+</div>
+
+<div id="videoList">
+  <button id="loadVideosBtn">Afficher mes vidéos</button>
+  <ul id="videoListUl"></ul>
+</div>
+
+<div id="playerContainer" style="margin-top: 2em"></div>
+
+<script type="module">
+  // redirection Cognito
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has("code")) {
+    import("./main.js").then(async ({ userManager }) => {
+      try {
+        const user = await userManager.signinCallback();
+        localStorage.setItem("access_token", user.id_token);
+        localStorage.setItem("email", user.profile?.email);
+        window.history.replaceState({}, "", "/");
+        window.location.reload();
+      } catch (err) {
+        console.error("❌ Erreur de connexion :", err);
+        document.body.innerHTML =
+                "<h2>Erreur de connexion</h2><pre>" + err.message + "</pre>";
+      }
+    });
+    throw new Error("Redirection en cours...");
+  }
+
+  import { userManager } from "./main.js";
+
+  const ENDPOINT = 'https://j93fm9f6bj.execute-api.eu-west-3.amazonaws.com';
+
+  const accessToken = localStorage.getItem("access_token");
+  const email = localStorage.getItem("email");
+
+  const loginBtn = document.getElementById("loginBtn");
+  const uploadSection = document.getElementById("upload-section");
+  const authSection = document.getElementById("auth-section");
+  const userEmail = document.getElementById("userEmail");
+  const uploadBtn = document.getElementById("uploadBtn");
+  const fileInput = document.getElementById("fileInput");
+  const status = document.getElementById("status");
+  const loadVideosBtn = document.getElementById("loadVideosBtn");
+  const videoListUl = document.getElementById("videoListUl");
+  const playerContainer = document.getElementById("playerContainer");
+
+  if (accessToken && email) {
+    authSection.style.display = "none";
+    uploadSection.style.display = "block";
+    userEmail.textContent = email;
+  }
+
+  loginBtn.addEventListener("click", () => {
+    userManager.signinRedirect();
+  });
+
+  uploadBtn.addEventListener("click", async () => {
+    const file = fileInput.files[0];
+    if (!file) return alert("Choisis un fichier vidéo");
+
+    const title = prompt("entre un titre pour la vidéo") ?? "Sans titre";
+    status.textContent = "⏳ Génération de l’URL de téléversement...";
+
+    const res = await fetch(
+            `${ENDPOINT}/generate-upload-url`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+              body: JSON.stringify({ title }),
+            }
+    );
+
+    if (!res.ok) {
+      status.textContent =
+              "❌ Erreur lors de la récupération de l’URL signée";
+      return;
+    }
+
+    const { url, key } = await res.json();
+    status.textContent = "⏳ Téléversement en cours...";
+
+    const uploadRes = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "video/mp4",
+      },
+      body: file,
+    });
+
+    if (uploadRes.ok) {
+      status.textContent = "✅ Téléversement réussi : " + key;
+    } else {
+      const errorText = await uploadRes.text();
+      console.error("Erreur d’upload :", errorText);
+      status.textContent =
+              "❌ Échec du téléversement : " + uploadRes.status;
+    }
+  });
+
+  loadVideosBtn.addEventListener("click", async () => {
+    const res = await fetch(
+            `${ENDPOINT}/list-videos`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+    );
+
+    if (!res.ok) {
+      videoListUl.innerHTML =
+              "<li>Erreur lors du chargement des vidéos</li>";
+      return;
+    }
+
+    const videos = await res.json();
+    videoListUl.innerHTML = "";
+
+    videos.forEach((v) => {
+      const li = document.createElement("li");
+      li.innerHTML = `
+            <strong>${v.title || "Sans titre"}</strong> – ${new Date(
+              v.created_at
+      ).toLocaleString()} – ${(v.size / 1024 / 1024).toFixed(2)} MB
+            <button>▶️ Lire</button>
+          `;
+
+      li.querySelector("button").addEventListener("click", async () => {
+        const res = await fetch(
+                `${ENDPOINT}/generate-streaming-url`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ s3_key: v.s3_key }),
+                }
+        );
+
+        if (!res.ok) {
+          alert("Impossible de générer l'URL de lecture");
+          return;
+        }
+
+        const { url } = await res.json();
+        playerContainer.innerHTML = `
+              <video controls width="640" src="${url}" autoplay></video>
+            `;
+      });
+
+      videoListUl.appendChild(li);
+    });
+  });
+</script>
+</body>
+</html>

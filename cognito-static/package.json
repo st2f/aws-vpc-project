@@ -1,0 +1,19 @@
+{
+  "name": "cognito",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "description": "",
+  "dependencies": {
+    "oidc-client-ts": "^3.3.0"
+  },
+  "devDependencies": {
+    "vite": "^7.0.2"
+  }
+}

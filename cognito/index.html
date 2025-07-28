@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload Vidéo</title>
+</head>
+<body>
+<h1>Envoyer une vidéo</h1>
+
+<div id="auth-section">
+  <button id="loginBtn">Se connecter</button>
+</div>
+
+<div id="upload-section" style="display: none">
+  <p>Connecté en tant que : <span id="userEmail"></span></p>
+  <input type="file" id="fileInput" accept="video/*" />
+  <button id="uploadBtn">Téléverser</button>
+  <p id="status"></p>
+</div>
+<div id="videoList">
+  <button id="loadVideosBtn">Afficher mes vidéos</button>
+  <ul id="videoList"></ul>
+</div>
+
+<script type="module">
+  import { userManager } from "./main.js";
+
+  const ENDPOINT = 'https://j93fm9f6bj.execute-api.eu-west-3.amazonaws.com';
+
+  const accessToken = localStorage.getItem("access_token");
+  const email = localStorage.getItem("email");
+
+  const loginBtn = document.getElementById("loginBtn");
+  const uploadSection = document.getElementById("upload-section");
+  const authSection = document.getElementById("auth-section");
+  const userEmail = document.getElementById("userEmail");
+  const uploadBtn = document.getElementById("uploadBtn");
+  const fileInput = document.getElementById("fileInput");
+  const status = document.getElementById("status");
+  const loadVideosBtn = document.getElementById("loadVideosBtn");
+  const videoList = document.getElementById("videoList");
+
+  if (accessToken && email) {
+    authSection.style.display = "none";
+    uploadSection.style.display = "block";
+    userEmail.textContent = email;
+  }
+
+  loginBtn.addEventListener("click", () => {
+    userManager.signinRedirect();
+  });
+
+  uploadBtn.addEventListener("click", async () => {
+    const file = fileInput.files[0];
+    if (!file) return alert("Choisis un fichier vidéo");
+
+    status.textContent = "⏳ Génération de l’URL de téléversement...";
+
+    const res = await fetch(
+            `${ENDPOINT}/generate-upload-url`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+    );
+
+    if (!res.ok) {
+      status.textContent =
+              "❌ Erreur lors de la récupération de l’URL signée";
+      return;
+    }
+
+    const { url, key } = await res.json();
+
+    status.textContent = "⏳ Téléversement en cours...";
+
+    const uploadRes = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "video/mp4",
+      },
+      body: file,
+    });
+
+    if (uploadRes.ok) {
+      status.textContent = "✅ Téléversement réussi : " + key;
+    } else {
+      const errorText = await uploadRes.text();
+      console.error("Erreur d’upload :", errorText);
+      status.textContent =
+              "❌ Échec du téléversement : " + uploadRes.status;
+    }
+  });
+  loadVideosBtn.addEventListener("click", async () => {
+    const res = await fetch(
+            `${ENDPOINT}/list-videos`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+    );
+
+    if (!res.ok) {
+      videoList.innerHTML = "<li>Erreur lors du chargement des vidéos</li>";
+      return;
+    }
+
+    const videos = await res.json();
+    console.log("Vidéos :", videos);
+    videoList.innerHTML = videos
+            .map(
+                    (v) => `
+    <li>
+      <strong>${v.title || "Sans titre"}</strong> – ${new Date(
+                            v.created_at
+                    ).toLocaleString()} – ${(v.size / 1024 / 1024).toFixed(2)} MB
+    </li>
+  `
+            )
+            .join("");
+  });
+</script>
+</body>
+</html>
